@@ -1481,9 +1481,9 @@ dependencies = [
 
 [[package]]
 name = "murr"
-version = "0.2.0-rc2"
+version = "0.2.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2984ce50923e870c3309a17707af70426e4074a8cc7413696907460e11ebad2a"
+checksum = "b93779a50c66b772f44f5c5f580d646d2319f40f6356d4ee96a66b9e5a1542ff"
 dependencies = [
  "arrow",
  "arrow-flight",
