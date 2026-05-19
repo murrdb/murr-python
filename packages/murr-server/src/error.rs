@@ -3,17 +3,17 @@ use pyo3::exceptions::{PyFileNotFoundError, PyIOError, PyRuntimeError, PyValueEr
 use pyo3::prelude::*;
 
 fn raise_named(class: &str, msg: String) -> PyErr {
-    let result: PyResult<PyErr> = Python::try_attach(|py| {
-        let module = py.import("murr.client.errors")?;
-        let cls = module.getattr(class)?;
-        let inst = cls.call1((msg,))?;
-        Ok::<PyErr, PyErr>(PyErr::from_value(inst))
+    Python::try_attach(|py| -> PyErr {
+        match py
+            .import("murr.client.errors")
+            .and_then(|m| m.getattr(class))
+            .and_then(|cls| cls.call1((msg.clone(),)))
+        {
+            Ok(inst) => PyErr::from_value(inst),
+            Err(e) => e,
+        }
     })
-    .unwrap_or_else(|_| Ok(PyRuntimeError::new_err("could not attach GIL")));
-    match result {
-        Ok(e) => e,
-        Err(e) => e,
-    }
+    .unwrap_or_else(|| PyRuntimeError::new_err("could not attach Python GIL"))
 }
 
 pub fn into_py_err(err: MurrError) -> PyErr {

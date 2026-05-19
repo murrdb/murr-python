@@ -12,14 +12,14 @@ use crate::config::extract_config;
 use crate::error::into_py_err;
 
 struct RunningServer {
+    service: Arc<MurrService>,
     shutdown: oneshot::Sender<()>,
     join: JoinHandle<()>,
 }
 
-#[pyclass(name = "MurrServer", unsendable)]
+#[pyclass(name = "MurrServer")]
 pub struct PyMurrServer {
-    _service: Arc<MurrService>,
-    server: Option<RunningServer>,
+    state: Option<RunningServer>,
     endpoint: Option<String>,
 }
 
@@ -42,22 +42,27 @@ impl PyMurrServer {
     }
 
     fn _stop_blocking(&mut self, py: Python<'_>) -> PyResult<()> {
-        if let Some(running) = self.server.take() {
-            let _ = running.shutdown.send(());
+        if let Some(state) = self.state.take() {
             let runtime = pyo3_async_runtimes::tokio::get_runtime();
             py.detach(|| {
-                let _ = runtime.block_on(running.join);
+                let _ = state.shutdown.send(());
+                let _ = runtime.block_on(state.join);
+                // dropping `state.service` (the last Arc) closes rocksdb
+                drop(state.service);
             });
         }
+        self.endpoint = None;
         Ok(())
     }
 
     fn _stop_async<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let taken = self.server.take();
+        let taken = self.state.take();
+        self.endpoint = None;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            if let Some(running) = taken {
-                let _ = running.shutdown.send(());
-                let _ = running.join.await;
+            if let Some(state) = taken {
+                let _ = state.shutdown.send(());
+                let _ = state.join.await;
+                drop(state.service);
             }
             Ok::<(), PyErr>(())
         })
@@ -70,7 +75,7 @@ impl PyMurrServer {
 
     #[getter]
     fn running(&self) -> bool {
-        self.server.is_some()
+        self.state.is_some()
     }
 }
 
@@ -101,8 +106,8 @@ async fn start_inner(config: Config) -> PyResult<PyMurrServer> {
     });
 
     Ok(PyMurrServer {
-        _service: service,
-        server: Some(RunningServer {
+        state: Some(RunningServer {
+            service,
             shutdown: shutdown_tx,
             join,
         }),
