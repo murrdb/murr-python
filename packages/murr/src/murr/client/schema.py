@@ -4,8 +4,9 @@ from pydantic import BaseModel
 
 
 class DType(str, Enum):
-    FLOAT32 = "float32"
     UTF8 = "utf8"
+    FLOAT32 = "float32"
+    FLOAT64 = "float64"
 
 
 class ColumnSchema(BaseModel):

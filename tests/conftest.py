@@ -2,7 +2,7 @@ import socket
 
 import pyarrow as pa
 
-from murr import ColumnSchema, DType, TableSchema
+from murr.client import ColumnSchema, DType, TableSchema
 
 
 def free_port() -> int:

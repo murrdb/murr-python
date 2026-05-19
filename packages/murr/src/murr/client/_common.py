@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-from murr.schema import TableSchema
+from murr.client.schema import TableSchema
 
 
 def validate_and_convert_batch(batch: pa.RecordBatch | pa.Table) -> list[pa.RecordBatch]:
