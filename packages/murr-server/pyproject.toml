@@ -1,0 +1,44 @@
+[build-system]
+requires = ["maturin>=1.12,<2"]
+build-backend = "maturin"
+
+[project]
+name = "murr-server"
+version = "0.2.0rc3"
+description = "Embedded Murr server with native bindings"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "Roman Grebennikov", email = "grv@dfdx.me" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "murr==0.2.0rc3",
+]
+
+[project.urls]
+Homepage = "https://github.com/shuttie/murr-python"
+Repository = "https://github.com/shuttie/murr-python"
+Issues = "https://github.com/shuttie/murr-python/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+python-source = "python"
+module-name = "murr.server.libmurr"
+features = ["pyo3/extension-module"]
