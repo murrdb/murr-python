@@ -5,17 +5,13 @@ on:
     tags:
       - 'v*'
 
-env:
-  CARGO_TERM_COLOR: always
-
 permissions:
   contents: write
 
-# NOTE: publishing the two packages is currently deferred. This workflow is
-# kept as a stub so the eventual release path is obvious. Both packages should
-# be tagged with the same version. To enable publishing:
+# NOTE: publishing the package is currently deferred. This workflow is kept as
+# a stub so the eventual release path is obvious. To enable publishing:
 #   1. Uncomment the build/publish jobs below.
-#   2. Configure the `pypi` environment with a PYPI_KEY for each package.
+#   2. Configure the `pypi` environment with a PYPI_KEY.
 
 jobs:
   create-release:
@@ -26,44 +22,20 @@ jobs:
         with:
           generate_release_notes: true
 
-  # build-murr-client:
+  # build:
   #   needs: create-release
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v6
   #     - uses: astral-sh/setup-uv@v7
-  #     - run: uv build packages/murr -o dist/
+  #     - run: uv build -o dist/
   #     - uses: actions/upload-artifact@v7
   #       with:
   #         name: murr-sdist-wheel
   #         path: dist/*
 
-  # build-murr-server-wheels:
-  #   needs: create-release
-  #   strategy:
-  #     matrix:
-  #       include:
-  #         - os: ubuntu-22.04
-  #         - os: macos-14
-  #         - os: windows-2022
-  #   runs-on: ${{ matrix.os }}
-  #   env:
-  #     MACOSX_DEPLOYMENT_TARGET: "11.0"
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: PyO3/maturin-action@v1
-  #       with:
-  #         command: build
-  #         working-directory: packages/murr-server
-  #         args: --release -i python3.11 python3.12 python3.13 python3.14
-  #     - uses: actions/upload-artifact@v7
-  #       with:
-  #         name: murr-server-wheels-${{ matrix.os }}
-  #         path: packages/murr-server/target/wheels/*.whl
-
   # publish-pypi:
-  #   needs: [build-murr-client, build-murr-server-wheels]
+  #   needs: build
   #   runs-on: ubuntu-latest
   #   environment: pypi
   #   permissions:
@@ -71,9 +43,8 @@ jobs:
   #   steps:
   #     - uses: actions/download-artifact@v8
   #       with:
-  #         pattern: 'murr-*'
+  #         name: murr-sdist-wheel
   #         path: dist
-  #         merge-multiple: true
   #     - uses: astral-sh/setup-uv@v7
   #     - run: uv publish dist/*
   #       env:

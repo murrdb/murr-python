@@ -1,31 +1,51 @@
-import socket
+import os
+import uuid
 
-import pyarrow as pa
+import pytest
+from testcontainers.core.container import DockerContainer
+from testcontainers.core.wait_strategies import HttpWaitStrategy
 
-from murr.client import ColumnSchema, DType, TableSchema
+from murr.client import Client, TableNotFoundError
+
+HTTP_PORT = 8080
+DEFAULT_IMAGE = "ghcr.io/murrdb/murr:0.3.0"
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+@pytest.fixture(scope="session")
+def endpoint():
+    """One murr server for the whole test session.
 
-
-def user_schema() -> TableSchema:
-    return TableSchema(
-        key="id",
-        columns={
-            "id": ColumnSchema(dtype=DType.UTF8, nullable=False),
-            "score": ColumnSchema(dtype=DType.FLOAT32, nullable=True),
-        },
+    Set MURR_ENDPOINT to test against an already running server, or MURR_IMAGE
+    to start another image.
+    """
+    external = os.environ.get("MURR_ENDPOINT")
+    if external:
+        yield external
+        return
+    image = os.environ.get("MURR_IMAGE", DEFAULT_IMAGE)
+    container = (
+        DockerContainer(image)
+        .with_exposed_ports(HTTP_PORT)
+        .waiting_for(HttpWaitStrategy(HTTP_PORT, "/health"))
     )
+    with container:
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(HTTP_PORT)
+        yield f"http://{host}:{port}"
 
 
-def user_batch() -> pa.RecordBatch:
-    return pa.RecordBatch.from_pydict(
-        {"id": ["a", "b", "c"], "score": [1.0, 2.0, 3.0]},
-        schema=pa.schema([
-            pa.field("id", pa.utf8(), nullable=False),
-            pa.field("score", pa.float32(), nullable=True),
-        ]),
-    )
+@pytest.fixture
+async def client(endpoint):
+    async with Client(endpoint) as c:
+        yield c
+
+
+@pytest.fixture
+async def table(client):
+    """A unique table name, the table is dropped after the test."""
+    name = f"t_{uuid.uuid4().hex}"
+    yield name
+    try:
+        await client.drop_table(name)
+    except TableNotFoundError:
+        pass
