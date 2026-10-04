@@ -133,9 +133,10 @@ already running.
 
 ## Releases
 
-Tag a `v*` release. The release workflow currently creates a GitHub release
-only; the build and PyPI publish steps are stubbed out, see
-`.github/workflows/release.yml`.
+Set `version` in `pyproject.toml` and push a matching `v<version>` tag, like
+`v0.3.0`. The release workflow runs the tests, checks that the tag matches the
+package version, publishes the sdist and wheel to PyPI, and then creates a
+GitHub release.
 
 ## License
 
