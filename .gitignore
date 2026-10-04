@@ -1,11 +1,7 @@
-# Rust
-target/
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
 .venv/
 venv/
@@ -16,10 +12,6 @@ build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-
-# maturin
-*.whl
-target/wheels/
 
 # IDE
 .idea/

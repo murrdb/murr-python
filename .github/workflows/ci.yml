@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [master]
 
-env:
-  CARGO_TERM_COLOR: always
-
 permissions:
   contents: read
 
@@ -29,37 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/murr-server
-          key: python-${{ matrix.python-version }}
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Create venv and install client
-        run: |
-          uv venv .venv --python ${{ matrix.python-version }}
-          source .venv/bin/activate
-          uv pip install -e packages/murr
-          uv pip install maturin pytest pytest-asyncio
+      - name: Install dependencies
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
 
-      - name: Build and install murr-server (maturin develop)
-        working-directory: packages/murr-server
-        run: |
-          source ../../.venv/bin/activate
-          maturin develop
-
+      # the tests start a murr server in Docker through testcontainers
       - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pytest tests/ -v
+        run: uv run pytest tests/ -v

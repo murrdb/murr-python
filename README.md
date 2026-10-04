@@ -1,124 +1,141 @@
 # murr-python
 
-Python packages for [murr](https://github.com/shuttie/murr) — a columnar
-in-memory cache for AI/ML inference workloads.
+Async Python client for [murr](https://github.com/murrdb/murr), a RocksDB-based
+NVMe/S3 cache for AI inference workloads.
 
-This repo ships two PyPI distributions that share the `murr` Python namespace
-([PEP 420](https://peps.python.org/pep-0420/) implicit namespace packages):
-
-| Distribution  | Import path     | Size  | What it gives you                                  |
-|---------------|-----------------|-------|----------------------------------------------------|
-| `murr`        | `murr.client`   | small | Pure-Python HTTP client (`AsyncClient`, `SyncClient`) |
-| `murr-server` | `murr.server`   | large | Embedded server with native PyO3 bindings (`MurrServer`) |
-
-Both can be installed side-by-side. `murr.server` *depends on* `murr` (for the
-shared schema and exception types), but `murr` has no dependency on
-`murr-server` — read-only clients get a tiny wheel without the native runtime.
+The client is pure Python: it talks to a murr server over HTTP, with Arrow IPC
+for data and JSON for schemas. Version `0.3.x` of the client needs a `0.3.x`
+server.
 
 ## Install
 
 ```bash
-pip install murr                 # client only
-pip install murr[server]         # client + embedded server
+pip install murr
 ```
 
-## Quickstart — embedded server + sync client
+## Quickstart
 
-```python
-import pyarrow as pa
-from murr.client import SyncClient, TableSchema, ColumnSchema, DType
-from murr.server import MurrServer, Config, ServerConfig, HttpConfig, StorageConfig
+Start a server:
 
-config = Config(
-    server=ServerConfig(http=HttpConfig(host="127.0.0.1", port=0)),
-    storage=StorageConfig(path="/tmp/murr"),
-)
-
-with MurrServer.start(config=config) as server, \
-     SyncClient(endpoint=server.endpoint) as client:
-
-    client.create(table="scores", schema=TableSchema(
-        key="id",
-        columns={
-            "id":    ColumnSchema(dtype=DType.UTF8, nullable=False),
-            "score": ColumnSchema(dtype=DType.FLOAT32),
-        },
-    ))
-
-    client.write(table="scores", batch=pa.RecordBatch.from_pydict(
-        {"id": ["a", "b"], "score": [1.0, 2.0]},
-        schema=pa.schema([
-            pa.field("id",    pa.utf8(),    nullable=False),
-            pa.field("score", pa.float32(), nullable=True),
-        ]),
-    ))
-
-    result = client.read(table="scores", keys=["a", "b"], columns=["score"])
-    print(result.column("score").to_pylist())  # [1.0, 2.0]
+```bash
+docker run -p 8080:8080 ghcr.io/murrdb/murr:0.3.0
 ```
 
-## Async API
+and then:
 
 ```python
 import asyncio
-from murr.client import AsyncClient
-from murr.server import MurrServer, Config, StorageConfig
+
+import pyarrow as pa
+from murr.client import Client, ColumnSchema, DType, TableSchema
+
 
 async def main():
-    server = await MurrServer.start_async(
-        config=Config(storage=StorageConfig(path="/tmp/murr"))
-    )
-    try:
-        async with AsyncClient(endpoint=server.endpoint) as client:
-            await client.list_tables()
-    finally:
-        await server.stop_async()
+    async with Client("http://localhost:8080") as db:
+        await db.create_table("docs", TableSchema(columns={
+            "id":       ColumnSchema(dtype=DType.UTF8, nullable=False, key=True),
+            "score":    ColumnSchema(dtype=DType.FLOAT32),
+            "category": ColumnSchema(dtype=DType.UTF8),
+        }))
+
+        await db.write("docs", pa.table({
+            "id":       ["doc_1", "doc_2", "doc_3"],
+            "score":    pa.array([0.95, 0.72, 0.68], pa.float32()),
+            "category": ["ml", "infra", "ops"],
+        }))
+
+        result = await db.read("docs", {"id": ["doc_3", "doc_1"]}, columns=["score", "category"])
+        print(result.to_pandas())
+
 
 asyncio.run(main())
 ```
 
-## Connecting to a remote server
+`read` returns a `pyarrow.Table` with the requested columns. Row `i` answers
+key `i`, and a key which is not in the table gives a row of nulls.
 
-`MurrServer` is only needed for **embedded** use. To talk to a server running
-elsewhere (any HTTP-speaking Murr instance):
+## API
+
+| Method                             | What it does                                  |
+|------------------------------------|-----------------------------------------------|
+| `create_table(name, schema)`       | Create a table                                |
+| `drop_table(name)`                 | Drop a table                                  |
+| `list_tables()`                    | All tables as `{name: TableSchema}`           |
+| `get_schema(name)`                 | Schema of one table                           |
+| `write(table, data)`               | Write a `pa.Table` or `pa.RecordBatch`        |
+| `read(table, keys, columns)`       | Read columns for a batch of keys              |
+| `compact(table)`                   | Compact a table, returns when it is done      |
+
+All methods are coroutines. There is no blocking client: wrap a call in
+`asyncio.run` if you need one.
+
+### Schemas
+
+A column has a `dtype`, and optional `nullable` (default `True`), `key`
+(default `False`) and `strict` (default `True`) flags. Supported dtypes are
+`utf8`, `bool`, `int8` to `int64`, `uint8` to `uint64`, `float32` and `float64`.
+
+A table needs at least one key column. Key columns must be `nullable=False`
+and of a `utf8` or integer dtype. Several key columns form a compound key:
 
 ```python
-from murr.client import SyncClient
-with SyncClient(endpoint="https://murr.example.com") as client:
-    client.list_tables()
+schema = TableSchema(columns={
+    "user":  ColumnSchema(dtype=DType.UTF8,  nullable=False, key=True),
+    "item":  ColumnSchema(dtype=DType.INT64, nullable=False, key=True),
+    "score": ColumnSchema(dtype=DType.FLOAT64),
+})
+
+await db.create_table("ratings", schema)
+await db.read("ratings", {"user": ["u1", "u2"], "item": [1, 7]}, columns=["score"])
 ```
 
-In this case install only the `murr` package — no native extension required.
+### Keys
+
+Keys go to the server as an Arrow table with one column per key column. Pass
+a `pa.Table`, a `pa.RecordBatch`, or a `{name: values}` mapping which is turned
+into a table with `pa.table()`.
+
+The server widens types (an `int32` array is fine for an `int64` key) but never
+narrows them. Python ints become `int64`, so a narrower key column needs a
+typed array:
+
+```python
+await db.read("events", {"id": pa.array([1, 2], pa.int32())}, columns=["flag"])
+```
+
+The same holds for writes, with one addition: writing `float64` values into a
+`float32` column rounds them, and is only accepted for a column created with
+`strict=False`.
+
+### Errors
+
+Server errors are raised as subclasses of `MurrError`, which carries the HTTP
+`status_code` and the server `message`:
+
+| Exception                 | When                                             |
+|---------------------------|--------------------------------------------------|
+| `TableNotFoundError`      | the table does not exist                         |
+| `TableAlreadyExistsError` | `create_table` for an existing name              |
+| `InvalidRequestError`     | bad schema, wrong key types, unknown column      |
+| `ServerError`             | the server failed to process the request         |
 
 ## Development
 
 ```bash
-uv venv .venv --python 3.14
-source .venv/bin/activate
-
-# Client (pure Python)
-uv pip install -e packages/murr
-uv pip install maturin pytest pytest-asyncio
-
-# Server (Rust + Python)
-cd packages/murr-server && maturin develop && cd ../..
-
-# Tests
-pytest tests/ -v
+uv sync --extra dev
+uv run pytest tests/ -v
 ```
 
-### Working against an unreleased `murr` Rust crate
-
-Check out the upstream `murr` repo as a sibling directory (`../../../murr`
-relative to `packages/murr-server`), then uncomment the `[patch.crates-io]`
-block at the bottom of `packages/murr-server/Cargo.toml`. Do not commit it
-uncommented — CI must resolve `murr` from crates.io.
+The tests start `ghcr.io/murrdb/murr:0.3.0` in Docker through
+[testcontainers](https://testcontainers-python.readthedocs.io). Set `MURR_IMAGE`
+to test against another image, or `MURR_ENDPOINT` to use a server which is
+already running.
 
 ## Releases
 
 Tag a `v*` release. The release workflow currently creates a GitHub release
-only; the wheel-build and PyPI publish steps are stubbed out — see
-`.github/workflows/release.yml` for the path to enable.
+only; the build and PyPI publish steps are stubbed out, see
+`.github/workflows/release.yml`.
 
 ## License
 
