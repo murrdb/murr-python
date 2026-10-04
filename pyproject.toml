@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "murr"
 version = "0.3.0"
 description = "Async Python client for murr, a RocksDB-based NVMe/S3 cache for AI inference workloads"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "Roman Grebennikov", email = "grv@dfdx.me" }]

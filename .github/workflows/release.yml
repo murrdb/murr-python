@@ -6,46 +6,69 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-
-# NOTE: publishing the package is currently deferred. This workflow is kept as
-# a stub so the eventual release path is obvious. To enable publishing:
-#   1. Uncomment the build/publish jobs below.
-#   2. Configure the `pypi` environment with a PYPI_KEY.
+  contents: read
 
 jobs:
-  create-release:
-    runs-on: ubuntu-22.04
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Check that the tag matches the package version
+        run: |
+          version="$(uv version --short)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in pyproject.toml"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build -o dist/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: murr-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: murr-dist
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Publish to PyPI
+        run: uv publish dist/*
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_KEY }}
+
+  # runs last, so a failed publish does not leave a release behind
+  create-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: murr-dist
+          path: dist
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-
-  # build:
-  #   needs: create-release
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: astral-sh/setup-uv@v7
-  #     - run: uv build -o dist/
-  #     - uses: actions/upload-artifact@v7
-  #       with:
-  #         name: murr-sdist-wheel
-  #         path: dist/*
-
-  # publish-pypi:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   permissions:
-  #     id-token: write
-  #   steps:
-  #     - uses: actions/download-artifact@v8
-  #       with:
-  #         name: murr-sdist-wheel
-  #         path: dist
-  #     - uses: astral-sh/setup-uv@v7
-  #     - run: uv publish dist/*
-  #       env:
-  #         UV_PUBLISH_TOKEN: ${{ secrets.PYPI_KEY }}
+          files: dist/*
