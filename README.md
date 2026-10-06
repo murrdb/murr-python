@@ -4,8 +4,8 @@ Async Python client for [murr](https://github.com/murrdb/murr), a RocksDB-based
 NVMe/S3 cache for AI inference workloads.
 
 The client is pure Python: it talks to a murr server over HTTP, with Arrow IPC
-for data and JSON for schemas. Version `0.3.x` of the client needs a `0.3.x`
-server.
+for data and JSON for schemas. Version `0.3.1` of the client needs a server of
+version `0.3.1` or newer, which is where reads became sparse.
 
 ## Install
 
@@ -18,7 +18,7 @@ pip install murr
 Start a server:
 
 ```bash
-docker run -p 8080:8080 ghcr.io/murrdb/murr:0.3.0
+docker run -p 8080:8080 ghcr.io/murrdb/murr:0.3.1
 ```
 
 and then:
@@ -44,15 +44,22 @@ async def main():
             "category": ["ml", "infra", "ops"],
         }))
 
-        result = await db.read("docs", {"id": ["doc_3", "doc_1"]}, columns=["score", "category"])
+        result = await db.read("docs", {"id": ["doc_3", "nope", "doc_1"]}, columns=["score", "category"])
         print(result.to_pandas())
 
 
 asyncio.run(main())
+
+# Output: only found keys come back, _idx is the position of the key in the request
+#    _idx  score category
+# 0     0   0.68      ops
+# 1     2   0.95       ml
 ```
 
-`read` returns a `pyarrow.Table` with the requested columns. Row `i` answers
-key `i`, and a key which is not in the table gives a row of nulls.
+`read` returns a `pyarrow.Table` with an `_idx` column and then the requested
+columns, one row per key which was found. A missing key has no row, and rows
+come in no particular order: `_idx` (`uint32`, exported as `IDX_COLUMN`) is the
+position of the row's key in the request, so join on it.
 
 ## API
 
@@ -63,7 +70,7 @@ key `i`, and a key which is not in the table gives a row of nulls.
 | `list_tables()`                    | All tables as `{name: TableSchema}`           |
 | `get_schema(name)`                 | Schema of one table                           |
 | `write(table, data)`               | Write a `pa.Table` or `pa.RecordBatch`        |
-| `read(table, keys, columns)`       | Read columns for a batch of keys              |
+| `read(table, keys, columns)`       | Read columns for the keys which are found     |
 | `compact(table)`                   | Compact a table, returns when it is done      |
 
 All methods are coroutines. There is no blocking client: wrap a call in
@@ -76,7 +83,8 @@ A column has a `dtype`, and optional `nullable` (default `True`), `key`
 `utf8`, `bool`, `int8` to `int64`, `uint8` to `uint64`, `float32` and `float64`.
 
 A table needs at least one key column. Key columns must be `nullable=False`
-and of a `utf8` or integer dtype. Several key columns form a compound key:
+and of a `utf8` or integer dtype. The column name `_idx` is reserved for the
+read result. Several key columns form a compound key:
 
 ```python
 schema = TableSchema(columns={
@@ -126,7 +134,7 @@ uv sync --extra dev
 uv run pytest tests/ -v
 ```
 
-The tests start `ghcr.io/murrdb/murr:0.3.0` in Docker through
+The tests start `ghcr.io/murrdb/murr:0.3.1` in Docker through
 [testcontainers](https://testcontainers-python.readthedocs.io). Set `MURR_IMAGE`
 to test against another image, or `MURR_ENDPOINT` to use a server which is
 already running.
@@ -134,7 +142,7 @@ already running.
 ## Releases
 
 Set `version` in `pyproject.toml` and push a matching `v<version>` tag, like
-`v0.3.0`. The release workflow runs the tests, checks that the tag matches the
+`v0.3.1`. The release workflow runs the tests, checks that the tag matches the
 package version, publishes the sdist and wheel to PyPI, and then creates a
 GitHub release.
 
