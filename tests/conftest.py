@@ -8,7 +8,7 @@ from testcontainers.core.wait_strategies import HttpWaitStrategy
 from murr.client import Client, TableNotFoundError
 
 HTTP_PORT = 8080
-DEFAULT_IMAGE = "ghcr.io/murrdb/murr:0.3.0"
+DEFAULT_IMAGE = "ghcr.io/murrdb/murr:0.3.1"
 
 
 @pytest.fixture(scope="session")

@@ -70,8 +70,13 @@ class Client:
         """Read `columns` for a batch of keys.
 
         `keys` holds one column per key column of the table, either as an Arrow
-        table or as a `{name: values}` mapping. Row `i` of the result answers
-        row `i` of `keys`, with nulls for keys which are not found.
+        table or as a `{name: values}` mapping.
+
+        The result is sparse: one row per key which was found, and no row for
+        a missing key. Its first column, `_idx` (uint32), is the position of
+        the row's key in `keys`, followed by `columns` in the requested order.
+        Rows come in no particular order, so join them on `_idx`. A null in a
+        row is a stored null.
 
         The server only widens key types. A mapping of Python ints becomes
         int64, so pass a typed array for a narrower key column:

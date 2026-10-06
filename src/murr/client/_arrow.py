@@ -11,6 +11,9 @@ ARROW_IPC_MIME = "application/vnd.apache.arrow.stream"
 # schema metadata entry of a fetch request, listing the columns to return
 COLUMNS_METADATA = b"columns"
 
+# leading column of a fetch response: the position of the row's key in the request
+IDX_COLUMN = "_idx"
+
 
 def to_table(data: pa.Table | pa.RecordBatch | Mapping[str, Any]) -> pa.Table:
     if isinstance(data, pa.Table):
